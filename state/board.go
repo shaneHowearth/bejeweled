@@ -8,14 +8,14 @@ import (
 type GemType int
 
 const (
-	GemEmpty  GemType = iota
-	GemRed            // Ruby
-	GemBlue           // Sapphire
-	GemGreen          // Emerald
-	GemYellow         // Topaz
-	GemPurple         // Amethyst
-	GemOrange         // Amber
-	GemWhite          // Diamond
+	GemEmpty GemType = iota
+	GemRed
+	GemBlue
+	GemGreen
+	GemYellow
+	GemPurple
+	GemOrange
+	GemWhite
 )
 
 type Position struct {
@@ -24,21 +24,19 @@ type Position struct {
 }
 
 type Board struct {
-	Rows  int
-	Cols  int
-	Grid  [][]GemType
-	Score int
-	Moves int
+	Rows     int
+	Cols     int
+	Grid     [][]GemType
+	Score    int
+	GameOver bool
 }
 
 func NewBoard(rows, cols int) *Board {
 	rand.Seed(time.Now().UnixNano())
 	b := &Board{
-		Rows:  rows,
-		Cols:  cols,
-		Grid:  make([][]GemType, rows),
-		Score: 0,
-		Moves: 30, // Default 30-move game
+		Rows: rows,
+		Cols: cols,
+		Grid: make([][]GemType, rows),
 	}
 	for r := 0; r < rows; r++ {
 		b.Grid[r] = make([]GemType, cols)
@@ -53,11 +51,9 @@ func (b *Board) FillBoardWithoutMatches() {
 			var g GemType
 			for {
 				g = GemType(rand.Intn(7) + 1)
-				// Prevent horizontal match on fill
 				if c >= 2 && b.Grid[r][c-1] == g && b.Grid[r][c-2] == g {
 					continue
 				}
-				// Prevent vertical match on fill
 				if r >= 2 && b.Grid[r-1][c] == g && b.Grid[r-2][c] == g {
 					continue
 				}
@@ -66,14 +62,16 @@ func (b *Board) FillBoardWithoutMatches() {
 			b.Grid[r][c] = g
 		}
 	}
+	// Ensure there is at least one valid move available from the start
+	if !b.HasValidMoves() {
+		b.FillBoardWithoutMatches()
+	}
 }
 
-// Swap exchanges two gems on the board
 func (b *Board) Swap(p1, p2 Position) {
 	b.Grid[p1.Row][p1.Col], b.Grid[p2.Row][p2.Col] = b.Grid[p2.Row][p2.Col], b.Grid[p1.Row][p1.Col]
 }
 
-// IsAdjacent checks if two positions are next to each other
 func IsAdjacent(p1, p2 Position) bool {
 	dr := p1.Row - p2.Row
 	dc := p1.Col - p2.Col
@@ -86,11 +84,9 @@ func IsAdjacent(p1, p2 Position) bool {
 	return (dr == 1 && dc == 0) || (dr == 0 && dc == 1)
 }
 
-// FindMatches locates all horizontal and vertical line matches (length >= 3)
 func (b *Board) FindMatches() [][]Position {
 	matched := make(map[Position]bool)
 
-	// Horizontal check
 	for r := 0; r < b.Rows; r++ {
 		matchLen := 1
 		for c := 0; c < b.Cols; c++ {
@@ -107,7 +103,6 @@ func (b *Board) FindMatches() [][]Position {
 		}
 	}
 
-	// Vertical check
 	for c := 0; c < b.Cols; c++ {
 		matchLen := 1
 		for r := 0; r < b.Rows; r++ {
@@ -131,18 +126,45 @@ func (b *Board) FindMatches() [][]Position {
 	return [][]Position{result}
 }
 
-// ApplyCascade clears matched gems, drops existing gems down, and refills the top
+// HasValidMoves checks if any adjacent swap can create a match of 3+
+func (b *Board) HasValidMoves() bool {
+	for r := 0; r < b.Rows; r++ {
+		for c := 0; c < b.Cols; c++ {
+			p1 := Position{Row: r, Col: c}
+			// Check right neighbor
+			if c+1 < b.Cols {
+				p2 := Position{Row: r, Col: c + 1}
+				b.Swap(p1, p2)
+				matches := b.FindMatches()
+				b.Swap(p1, p2) // Swap back
+				if len(matches[0]) > 0 {
+					return true
+				}
+			}
+			// Check down neighbor
+			if r+1 < b.Rows {
+				p2 := Position{Row: r + 1, Col: c}
+				b.Swap(p1, p2)
+				matches := b.FindMatches()
+				b.Swap(p1, p2) // Swap back
+				if len(matches[0]) > 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func (b *Board) ApplyCascade(matches []Position) int {
 	if len(matches) == 0 {
 		return 0
 	}
 
-	// 1. Mark matched positions empty
 	for _, p := range matches {
 		b.Grid[p.Row][p.Col] = GemEmpty
 	}
 
-	// 2. Drop gems down column by column
 	for c := 0; c < b.Cols; c++ {
 		writeRow := b.Rows - 1
 		for r := b.Rows - 1; r >= 0; r-- {
@@ -154,7 +176,6 @@ func (b *Board) ApplyCascade(matches []Position) int {
 				writeRow--
 			}
 		}
-		// Refill top with new random gems
 		for r := writeRow; r >= 0; r-- {
 			b.Grid[r][c] = GemType(rand.Intn(7) + 1)
 		}
